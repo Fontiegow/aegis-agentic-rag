@@ -36,7 +36,7 @@ services:
       - aegis-network
 
   qdrant:
-    image: qdrant/qdrant:v1.8.0
+    image: qdrant/qdrant:latest
     container_name: aegis-qdrant
     restart: always
     ports:
