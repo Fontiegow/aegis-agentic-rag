@@ -5,6 +5,7 @@ from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from core.config import settings
 from database.connection import check_services_health, engine, qdrant_client, redis_client
+from apps.api.v1.router import api_router
 
 
 @asynccontextmanager
@@ -15,11 +16,15 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
+# 1. Instantiate FastAPI first
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan,
 )
+
+# 2. Mount Routers after app instantiation
+app.include_router(api_router, prefix=settings.API_V1_STR)
 
 
 @app.get("/metrics", tags=["Observability"])

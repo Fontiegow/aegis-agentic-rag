@@ -1,3 +1,4 @@
+from typing import Optional
 from pydantic_settings import BaseSettings, SettingsConfigDict
 from pydantic import Field
 
@@ -28,6 +29,16 @@ class Settings(BaseSettings):
     # Qdrant
     QDRANT_HOST: str = Field(default="localhost")
     QDRANT_PORT: int = Field(default=6333)
+
+    # Ollama Settings
+    OLLAMA_BASE_URL: str = Field(default="http://localhost:11434")
+
+    # vLLM & OpenAI-Compatible Settings
+    VLLM_BASE_URL: str = Field(default="http://localhost:8000/v1")
+    
+    # OpenRouter Settings
+    OPENROUTER_BASE_URL: str = Field(default="https://openrouter.ai/api/v1")
+    OPENROUTER_API_KEY: Optional[str] = Field(default=None)
 
     model_config = SettingsConfigDict(env_file=".env", case_sensitive=True, extra="ignore")
 
