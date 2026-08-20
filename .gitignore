@@ -36,3 +36,5 @@ dist/
 
 # Logs
 *.log
+
+.commands.txt
