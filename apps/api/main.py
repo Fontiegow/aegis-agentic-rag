@@ -1,3 +1,11 @@
+import sys
+from pathlib import Path
+
+# Ensure root workspace directory is in sys.path before loading local modules
+ROOT_DIR = Path(__file__).resolve().parent.parent.parent
+if str(ROOT_DIR) not in sys.path:
+    sys.path.insert(0, str(ROOT_DIR))
+
 from contextlib import asynccontextmanager
 from fastapi import FastAPI, Response, status
 from fastapi.responses import JSONResponse

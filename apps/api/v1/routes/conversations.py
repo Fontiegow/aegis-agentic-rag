@@ -1,83 +1,57 @@
-import uuid
-from typing import List, Optional
-from fastapi import APIRouter, Depends, HTTPException, status
-from pydantic import BaseModel, Field
+from fastapi import APIRouter, Depends, HTTPException
+from pydantic import BaseModel
+from typing import Optional, Dict, Any
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from database.connection import get_db_session
-from database.repositories.chat import ChatRepository
+from services.agent.core import AegisAgent
+from services.agent.memory import ChatMemoryManager
+from services.rag.evaluator import RAGEvaluator
 
-router = APIRouter(prefix="/conversations", tags=["Conversations Memory"])
+router = APIRouter()
+memory_manager = ChatMemoryManager()
+evaluator = RAGEvaluator()
+agent = AegisAgent()
 
+class ChatRequest(BaseModel):
+    session_id: str
+    message: str
 
-# Schemas
-class MessageRead(BaseModel):
-    id: uuid.UUID
-    role: str
-    content: str
-    meta_data: Optional[dict] = None
-
-    class Config:
-        from_attributes = True
-
-
-class ConversationRead(BaseModel):
-    id: uuid.UUID
-    title: Optional[str] = None
-    messages: List[MessageRead] = []
-
-    class Config:
-        from_attributes = True
-
-
-class ConversationCreate(BaseModel):
-    title: Optional[str] = Field(default="New Chat", max_length=255)
-
-
-# Endpoints
-@router.post("/", response_model=ConversationRead, status_code=status.HTTP_201_CREATED)
-async def create_conversation(
-    payload: ConversationCreate,
-    session: AsyncSession = Depends(get_db_session),
-):
-    repo = ChatRepository(session)
-    return await repo.create_conversation(title=payload.title)
-
-
-@router.get("/", response_model=List[ConversationRead])
-async def list_conversations(
-    limit: int = 20,
-    offset: int = 0,
-    session: AsyncSession = Depends(get_db_session),
-):
-    repo = ChatRepository(session)
-    return await repo.list_conversations(limit=limit, offset=offset)
-
-
-@router.get("/{conversation_id}", response_model=ConversationRead)
-async def get_conversation(
-    conversation_id: uuid.UUID,
-    session: AsyncSession = Depends(get_db_session),
-):
-    repo = ChatRepository(session)
-    conversation = await repo.get_conversation(conversation_id)
-    if not conversation:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Conversation {conversation_id} not found",
+@router.post("/chat")
+async def chat_endpoint(request: ChatRequest, db: AsyncSession = Depends(get_db_session)):
+    try:
+        # 1. Fetch recent conversation history from Redis
+        history = memory_manager.get_recent_history(request.session_id)
+        
+        # 2. Run agent with matching parameters (query and history)
+        agent_response = await agent.run(
+            query=request.message,
+            history=history
         )
-    return conversation
-
-
-@router.delete("/{conversation_id}", status_code=status.HTTP_204_NO_CONTENT)
-async def delete_conversation(
-    conversation_id: uuid.UUID,
-    session: AsyncSession = Depends(get_db_session),
-):
-    repo = ChatRepository(session)
-    deleted = await repo.delete_conversation(conversation_id)
-    if not deleted:
-        raise HTTPException(
-            status_code=status.HTTP_404_NOT_FOUND,
-            detail=f"Conversation {conversation_id} not found",
+        
+        # 3. Extract retrieved contexts and generated answer
+        retrieved_docs = agent_response.get("retrieved_contexts", [])
+        answer_text = agent_response.get("output", "")
+        
+        # 4. Evaluate response quality
+        eval_metrics = evaluator.evaluate(
+            query=request.message,
+            response=answer_text,
+            retrieved_contexts=retrieved_docs
         )
+        
+        # 5. Persist turn to Redis and PostgreSQL
+        memory_manager.add_turn(
+            db=db,
+            session_id=request.session_id,
+            user_msg=request.message,
+            assistant_msg=answer_text
+        )
+        
+        return {
+            "session_id": request.session_id,
+            "response": answer_text,
+            "evaluation": eval_metrics
+        }
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))

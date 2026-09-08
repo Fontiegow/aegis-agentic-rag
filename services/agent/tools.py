@@ -1,27 +1,57 @@
-# services/agent/tools.py
-from typing import Dict, Any, List
+#services/agent/tools.py
+from langchain_core.tools import tool
 from services.rag.retriever import RAGRetriever
 
-_retriever = RAGRetriever()
+_retriever = None
 
-def search_knowledge_base(query: str, limit: int = 3, score_threshold: float = 0.25) -> str:
+def get_retriever() -> RAGRetriever:
+    """Create the RAG retriever lazily on first tool invocation."""
+    global _retriever
+
+    if _retriever is None:
+        _retriever = RAGRetriever()
+
+    return _retriever
+
+
+@tool
+def search_knowledge_base(query: str) -> str:
     """
-    Agent tool to query the Aegis vector database for Warhammer lore / domain context.
-    Returns formatted string context for LLM consumption.
+    Search the Aegis knowledge base for Warhammer 40K lore,
+    Primarch information, and technical domain knowledge.
     """
-    results = _retriever.search(query=query, limit=limit, score_threshold=score_threshold)
-    if not results:
-        return "No relevant context found in knowledge base."
 
-    formatted_context = []
-    for idx, hit in enumerate(results, 1):
-        source = hit.get("metadata", {}).get("source", "unknown")
-        score = hit.get("score", 0.0)
-        formatted_context.append(f"[{idx}] (Score: {score:.2f} | Source: {source})\n{hit['text']}")
+    try:
+        retriever = get_retriever()
 
-    return "\n\n".join(formatted_context)
+        results = retriever.search(
+            query=query,
+            limit=3,
+            score_threshold=0.25,
+        )
 
-# Map available tools for agent invocation
-AGENT_TOOLS = {
-    "search_knowledge_base": search_knowledge_base
-}
+        if not results:
+            return "No relevant context found in knowledge base."
+
+        formatted_context = []
+
+        for idx, hit in enumerate(results, 1):
+            metadata = hit.get("metadata", {})
+            source = metadata.get("source", "unknown")
+            score = hit.get("score", 0.0)
+            text = hit.get("text", "")
+
+            formatted_context.append(
+                f"[{idx}] (Score: {score:.2f} | Source: {source})\n{text}"
+            )
+
+        return "\n\n".join(formatted_context)
+
+    except Exception as e:
+        return (
+            "Knowledge base search failed. "
+            f"Error: {type(e).__name__}: {e}"
+        )
+
+
+AGENT_TOOLS = [search_knowledge_base]
