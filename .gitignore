@@ -38,3 +38,14 @@ dist/
 *.log
 
 .commands.txt
+
+__pycache__/
+*.pyc
+.env
+data/
+.env
+.env.local
+*.env
+.env
+
+.env

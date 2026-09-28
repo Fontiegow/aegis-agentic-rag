@@ -1,15 +1,14 @@
 import sys
 from pathlib import Path
+from contextlib import asynccontextmanager
+from fastapi import FastAPI, status
+from fastapi.responses import JSONResponse
+from prometheus_fastapi_instrumentator import Instrumentator
 
-# Ensure root workspace directory is in sys.path before loading local modules
+# Ensure root workspace directory is in sys.path
 ROOT_DIR = Path(__file__).resolve().parent.parent.parent
 if str(ROOT_DIR) not in sys.path:
     sys.path.insert(0, str(ROOT_DIR))
-
-from contextlib import asynccontextmanager
-from fastapi import FastAPI, Response, status
-from fastapi.responses import JSONResponse
-from prometheus_client import CONTENT_TYPE_LATEST, generate_latest
 
 from core.config import settings
 from database.connection import check_services_health, engine, qdrant_client, redis_client
@@ -24,21 +23,22 @@ async def lifespan(app: FastAPI):
     await engine.dispose()
 
 
-# 1. Instantiate FastAPI first
+# 1. Instantiate FastAPI once
 app = FastAPI(
     title=settings.PROJECT_NAME,
     openapi_url=f"{settings.API_V1_STR}/openapi.json",
     lifespan=lifespan,
 )
 
-# 2. Mount Routers after app instantiation
+# 2. Attach Prometheus Instrumentator
+instrumentator = Instrumentator(
+    should_group_status_codes=True,
+    should_ignore_untemplated=True,
+)
+instrumentator.instrument(app).expose(app, endpoint="/metrics")
+
+# 3. Mount Routers
 app.include_router(api_router, prefix=settings.API_V1_STR)
-
-
-@app.get("/metrics", tags=["Observability"])
-async def metrics():
-    """Expose Prometheus metrics endpoint."""
-    return Response(content=generate_latest(), media_type=CONTENT_TYPE_LATEST)
 
 
 @app.get("/health", tags=["Infrastructure Check"])

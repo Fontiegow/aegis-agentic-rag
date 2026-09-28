@@ -1,7 +1,8 @@
+# services/agent/core.py
 import os
 from typing import List, Dict, Any, Optional
 
-# Strip proxy environment variables for the current Python process
+# Strip proxy environment variables for local processing
 for env_var in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy", "ALL_PROXY", "all_proxy"]:
     os.environ.pop(env_var, None)
 
@@ -61,7 +62,6 @@ class AegisAgent:
             answer_text = ""
 
             for msg in final_messages:
-                # Collect tool execution results for RAG evaluation
                 if isinstance(msg, ToolMessage):
                     retrieved_contexts.append(str(msg.content))
                 elif isinstance(msg, AIMessage) and msg.content:
